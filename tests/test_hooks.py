@@ -11,7 +11,7 @@ from llm_ablation.hooks import (
 
 
 def _logits(bundle, prompt="hello there, how are you"):
-    inputs = bundle.tokenizer(prompt, return_tensors="pt")
+    inputs = bundle.tokenizer(prompt, return_tensors="pt").to(bundle.device)
     with torch.no_grad():
         return bundle.model(**inputs).logits
 

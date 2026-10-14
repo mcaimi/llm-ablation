@@ -1,6 +1,6 @@
 import pytest
 
-from llm_ablation.models import ModelBundle, load_model
+from llm_ablation.models import ModelBundle, get_accelerator_device, load_model
 
 TINY_MODEL = "yujiepan/qwen2-tiny-random"
 
@@ -11,4 +11,5 @@ def tiny_bundle() -> ModelBundle:
     heads, 2 KV heads i.e. GQA, hidden_size=8): fast to download, small
     enough for CI, and structurally identical to the full-size model
     (`self_attn.o_proj`, `mlp.down_proj`, ...) that `hooks.py` relies on."""
-    return load_model(TINY_MODEL, device="cpu")
+    accelerator, _ = get_accelerator_device()
+    return load_model(TINY_MODEL, device=accelerator)
