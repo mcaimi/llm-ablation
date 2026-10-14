@@ -16,7 +16,9 @@ try:
     import torch
 
     # import from local libraries
-    from llm_ablation.hooks import AblationMode, ActivationCache, ablate_heads
+    from llm_ablation.hooks import (
+        AblationMode, ActivationCache, ablate_heads,
+        collect_activations, head_hook_point)
     from llm_ablation.models import ModelBundle
 except Exception as e:
     raise(e)
@@ -54,7 +56,7 @@ def logit_diff(bundle: ModelBundle, prompt: str, correct_token: str, incorrect_t
 
     return float((logits[correct_id] - logits[incorrect_id]).item())
 
-# run an ablation experiment @layer/head level
+# run an ablation experiment @head level
 def head_ablation_sweep(
     bundle: ModelBundle,
     prompts: TaskPairs,
@@ -78,7 +80,7 @@ def head_ablation_sweep(
     # iterate over every model layer
     for layer in range(n_layers):
         # now for every head in the layer
-        for head in range(n_heads):
+        for head in range(n_heads):                    
             # perform head ablation
             with ablate_heads(bundle, layer, [head], mode=mode, reference_cache=reference_cache):
                 # recompute logit diff with ablated head
@@ -100,8 +102,24 @@ def run_factual_recall_task(bundle: ModelBundle, pairs: TaskPairs, mode: str = "
     # compute baseline with no head ablation
     baseline_diffs = [logit_diff(bundle, p, c, i) for p, c, i in pairs]
 
+    # generate activation caches for "mean" and "resample" modes
+    match mode:
+        case "mean" | "resample":
+            # perform collection of activation caches at each layer
+            baseline_prompts = [p for p, _, _ in pairs]
+            hook_points = [head_hook_point(layer) for layer in range(bundle.n_layers)]
+            activation_cache = collect_activations(
+                bundle,
+                baseline_prompts,
+                hook_points=hook_points
+            )
+        case "zero":
+            activation_cache = None
+        case _: # defaults to zero
+            activation_cache = None
+
     # run ablation sweep
-    sweep = head_ablation_sweep(bundle, pairs, mode=mode)
+    sweep = head_ablation_sweep(bundle, pairs, mode=mode, reference_cache=activation_cache)
 
     # return task metadata
     return {

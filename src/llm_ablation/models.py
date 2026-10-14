@@ -1,9 +1,9 @@
 """
-Shared model load/accelerator detector code.
+    Shared model load/accelerator detector code.
 
-Import this to load a checkpoint from disk or from the network (HF)
+    Import this to load a checkpoint from disk or from the network (HF)
 
-Also, model structure display/plot code belong here
+    Also, model structure display/plot code belong here
 """
 
 from typing import Any
@@ -80,8 +80,10 @@ def get_accelerator_device():
 
 @dataclass
 class ModelBundle:
-    """A loaded model + tokenizer plus the architecture metadata the ablation
-    utilities need (number of layers/heads, head dimension)."""
+    """
+        A loaded model + tokenizer plus the architecture metadata the ablation
+        utilities need (number of layers/heads, head dimension).
+    """
 
     model: PreTrainedModel
     tokenizer: PreTrainedTokenizerBase
@@ -107,7 +109,7 @@ class ModelBundle:
 
     def generate(self, prompt: str, max_new_tokens: int = 64, **kwargs: Any) -> str:
         """
-        Chat-format `prompt`, generate, and return only the newly generated text.
+            Chat-format `prompt`, generate, and return only the newly generated text.
         """
 
         messages = [{"role": "user", "content": prompt}]
@@ -134,12 +136,13 @@ class ModelBundle:
 def load_model(
     name: str = DEFAULT_MODEL, device: str | None = None, dtype: str = "auto"
 ) -> ModelBundle:
-    """Load a causal LM + tokenizer and wrap them in a :class:`ModelBundle`.
+    """
+        Load a causal LM + tokenizer and wrap them in a :class:`ModelBundle`.
 
-    `name` can be any causal LM on the Hugging Face Hub with a standard
-    decoder-only architecture (Qwen2, Llama, Gemma2, ...); the ablation hooks
-    in :mod:`llm_ablation.hooks` rely only on the common `model.model.layers[i]`
-    / `self_attn.o_proj` / `mlp` module structure that these share.
+        `name` can be any causal LM on the Hugging Face Hub with a standard
+        decoder-only architecture (Qwen2, Llama, Gemma2, ...); the ablation hooks
+        in :mod:`llm_ablation.hooks` rely only on the common `model.model.layers[i]`
+        / `self_attn.o_proj` / `mlp` module structure that these share.
     """
 
     # resolve accelerator device
