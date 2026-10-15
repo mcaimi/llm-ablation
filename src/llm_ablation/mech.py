@@ -18,8 +18,8 @@ try:
     # import from local libraries
     from llm_ablation.hooks import (
         AblationMode, ActivationCache, 
-        ablate_heads, ablate_neurons,
-        collect_activations, head_hook_point)
+        ablate_heads, ablate_neurons, ablate_layer,
+        collect_activations, head_hook_point, neuron_hook_point, layer_hook_point)
     from llm_ablation.models import ModelBundle
 except Exception as e:
     raise(e)
@@ -109,16 +109,16 @@ def mlp_ablation_sweep(
         num_ops = n_layers x n_in_features
     """
     n_layers = bundle.n_layers
+    hidden_size = bundle.layer(0).mlp.down_proj.in_features
 
     # calculate baseline logit diff with all neurons unchanged
     baseline = np.array([logit_diff(bundle, p, c, i) for p, c, i in prompts])
 
     # drops array
-    drops: list = []
+    drops = np.zeros((n_layers, hidden_size))
 
     # sweep over layers
     for layer in range(n_layers):
-        hidden_size = bundle.layer(layer).mlp.down_proj.in_features
         # sweep over neurons
         for neuron in range(hidden_size):
             # perform ablation
@@ -127,10 +127,44 @@ def mlp_ablation_sweep(
                 ablated = np.array([logit_diff(bundle, p, c, i) for p, c, i in prompts])
             
             # measure and save ablation run result for this layer
-            drops.append((baseline - ablated).mean())
+            drops[layer, neuron] = (baseline - ablated).mean()
 
     # return the ablation drop data
-    return np.vstack(drops)
+    return drops
+
+# run ablation experiment @layer level
+def layer_ablation_sweep(
+    bundle: ModelBundle,
+    prompts: TaskPairs,
+    mode: AblationMode = "zero",
+    reference_cache: ActivationCache | None = None,
+) -> np.ndarray:
+    """
+        Iteratively skip an entire layer.
+        For "Zero" mode, output==input so the residual stream passes as-is
+
+        "Mean" and "Resample" mode replace the residual value with samples from the activation cache
+    """
+    n_layers = bundle.n_layers
+
+    # calculate baseline logit diff with all layers unchanged
+    baseline = np.array([logit_diff(bundle, p, c, i) for p, c, i in prompts])
+
+    # drops array
+    drops = np.zeros(n_layers)
+
+    # sweep
+    for layer in range(n_layers):
+        # perform ablation
+        with ablate_layer(bundle=bundle, layer=layer, mode=mode, reference_cache=reference_cache):
+            # recompute logit diff with ablated head
+            ablated = np.array([logit_diff(bundle, p, c, i) for p, c, i in prompts])
+
+        # measure and save ablation run result for this layer
+        drops[layer] = (baseline - ablated).mean()
+
+    # return values
+    return drops
 
 # factual recall experiment: perform Head Ablation in respect to Domain Knowledge Tasks
 def run_factual_recall_task(bundle: ModelBundle, pairs: TaskPairs, mode: str = "zero") -> dict:
@@ -204,6 +238,43 @@ def run_factual_recall_task_mlp(bundle: ModelBundle, pairs: TaskPairs, mode: str
         "baseline_logit_diffs": baseline_diffs,
         "mean_baseline_logit_diff": float(np.mean(baseline_diffs)),
         "mlp_ablation_drop": sweep,
+    }
+
+# factual recall experiment: perform MLP Ablation in respect to Domain Knowledge Tasks
+def run_factual_recall_task_layer(bundle: ModelBundle, pairs: TaskPairs, mode: str = "zero") -> dict:
+    """
+        Baseline logit-diffs plus the zero-ablation mlp sweep for a
+        factual-recall style task: identify neurons that contribute to a
+        specific response for a given prompt domain.
+    """
+    # compute baseline with no head ablation
+    baseline_diffs = [logit_diff(bundle, p, c, i) for p, c, i in pairs]
+
+    # generate activation caches for "mean" and "resample" modes
+    match mode:
+        case "mean" | "resample":
+            # perform collection of activation caches at each layer
+            baseline_prompts = [p for p, _, _ in pairs]
+            hook_points = [layer_hook_point(layer) for layer in range(bundle.n_layers)]
+            activation_cache = collect_activations(
+                bundle,
+                baseline_prompts,
+                hook_points=hook_points
+            )
+        case "zero":
+            activation_cache = None
+        case _: # defaults to zero
+            activation_cache = None
+
+    # run ablation sweep
+    sweep = layer_ablation_sweep(bundle, pairs, mode=mode, reference_cache=activation_cache)
+
+    # return task metadata
+    return {
+        "ablation_mode": mode,
+        "baseline_logit_diffs": baseline_diffs,
+        "mean_baseline_logit_diff": float(np.mean(baseline_diffs)),
+        "layer_ablation_drop": sweep,
     }
 
 # determine the top `k` heads that contribute to a specific response
