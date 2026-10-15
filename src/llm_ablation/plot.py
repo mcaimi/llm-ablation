@@ -11,7 +11,7 @@ except Exception as e:
     raise(e)
 
 # plot the logit drop for each head in each layer
-def plot_head_ablation_heatmap(
+def plot_ablation_heatmap(
     matrix: np.ndarray, title: str = "Head ablation: logit-diff drop",
     cmap: str = "viridis",
     aspect: str = "auto",
